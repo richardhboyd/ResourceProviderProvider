@@ -1,0 +1,10 @@
+{
+    "typeName": "Richard::Resource::Provider",
+    "language": "python37",
+    "runtime": "python3.7",
+    "entrypoint": "richard_resource_provider.handlers.resource",
+    "testEntrypoint": "richard_resource_provider.handlers.test_entrypoint",
+    "settings": {
+        "use_docker": true
+    }
+}

@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters: 
+  TypeName: 
+    Type: "String"
+    Default: "Richard::Cloud9::Environment"
+  ExecutionRoleArn: 
+    Type: "String"
+    Default: "arn:aws:iam::784907117618:role/richard-cloud9-environment-role-stac-ExecutionRole-14CFVAVJTU6CX"
+  LogRoleArn: 
+    Type: "String"
+    Default: "arn:aws:iam::784907117618:role/CloudFormationManagedUplo-LogAndMetricsDeliveryRol-1SKOPR6D2P648"
+  LogGroupName:
+    Type: "String"
+    Default: "local-test"
+  SchemaHandlerPackage: 
+    Type: "String"
+    Default: "s3://rhb-blog/provider-types/richard-cloud9-environment.zip"
+Resources:
+  ResourceProviderProvider:
+    Type: Richard::Resource::Provider
+    Properties:
+      TypeName: !Ref TypeName
+      ExecutionRoleArn: !Ref ExecutionRoleArn
+      LoggingConfig:
+        LogRoleArn: !Ref LogRoleArn
+        LogGroupName: !Ref LogGroupName
+      SchemaHandlerPackage: !Ref SchemaHandlerPackage

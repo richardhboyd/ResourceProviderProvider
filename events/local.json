@@ -1,0 +1,12 @@
+{
+    "desiredResourceState": {
+      "TypeName": "Richard::Cloud9::Environment",
+      "ExecutionRoleArn": "arn:aws:iam::784907117618:role/richard-cloud9-environment-role-stac-ExecutionRole-14CFVAVJTU6CX",
+      "LoggingConfig": {
+          "LogRoleArn": "arn:aws:iam::784907117618:role/CloudFormationManagedUplo-LogAndMetricsDeliveryRol-1SKOPR6D2P648",
+          "LogGroupName": "local-test"
+      },
+      "SchemaHandlerPackage": "s3://rhb-blog/provider-types/richard-cloud9-environment.zip"
+    },
+    "logicalResourceIdentifier": "MyLogicalId004"
+}

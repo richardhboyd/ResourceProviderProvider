@@ -1,0 +1,184 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation to set up a custom CloudFormation resource with Lambda,
+  and then call it in the same template.
+Resources:
+  CustomFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          import boto3
+          import uuid
+          import cfnresponse
+          from botocore.waiter import WaiterModel, create_waiter_with_client
+          def main(event, context):
+            try:
+              reg(event, context)
+            except Exception as e:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, event["RequestId"])
+          
+          def reg(event, context):
+            print(f"ResponseURL: {event['ResponseURL']}")
+            if event["RequestType"] == "Create":
+              client = boto3.client("cloudformation")
+              response = client.register_type(
+                Type='RESOURCE',
+                TypeName="Richard::Resource::Provider",
+                SchemaHandlerPackage=f"s3://{event['ResourceProperties']['S3Bucket']}/{event['ResourceProperties']['Object']}",
+                LoggingConfig={
+                    'LogRoleArn': event['ResourceProperties']['Role'],
+                    'LogGroupName': 'resource-provider-provider'
+                },
+                ExecutionRoleArn=event['ResourceProperties']['Role'],
+                ClientRequestToken=str(uuid.uuid4())
+              )
+              print(response)
+              delay = 15
+              waiter_name = "RegistrationWaiter"
+              waiter_config = {
+                'version': 2,
+                'waiters': {
+                  waiter_name: {
+                    'operation': "DescribeTypeRegistration",
+                    'delay': delay,
+                    'maxAttempts': 30,
+                    'acceptors': [
+                      {
+                        'matcher': 'path',
+                        'expected': 'COMPLETE',
+                        'argument': 'ProgressStatus',
+                        'state': 'success'
+                      },
+                      {
+                        'matcher': 'path',
+                        'expected': 'IN_PROGRESS',
+                        'argument': 'ProgressStatus',
+                        'state': 'retry'
+                      },
+                      {
+                        'matcher': 'path',
+                        'expected': 'FAILED',
+                        'argument': 'ProgressStatus',
+                        'state': 'failure'
+                      }
+                    ]
+                  }
+                }
+              }
+              waiter_model = WaiterModel(waiter_config)
+              custom_waiter = create_waiter_with_client(waiter_name, waiter_model, client)
+              print(custom_waiter.wait(RegistrationToken=response["RegistrationToken"]))
+              describe_type_response = client.describe_type_registration(RegistrationToken=response["RegistrationToken"])
+              response = client.set_type_default_version(Arn=describe_type_response["TypeVersionArn"])
+              responseData = {}
+              responseData['VersionArn'] = describe_type_response["TypeVersionArn"]
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, describe_type_response["TypeVersionArn"])
+            else:
+              responseData = {}
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, event["RequestId"])
+          
+      Handler: index.main
+      Role: !GetAtt 'LambdaExecutionRole.Arn'
+      Runtime: python3.7
+      Timeout: '900'
+  ResourceProviderProviderExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - resources.cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - cloudformation:RegisterType
+                  - cloudformation:DescribeTypeRegistration
+                  - cloudformation:SetTypeDefaultVersion
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:*
+                  - iam:PassRole
+                Resource: '*'
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - cloudformation:RegisterType
+                  - cloudformation:DescribeTypeRegistration
+                  - cloudformation:SetTypeDefaultVersion
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !GetAtt ResourceProviderProviderExecutionRole.Arn
+  CustomResource:
+    Type: Custom::CustomResource
+    Properties:
+      ServiceToken: !GetAtt 'CustomFunction.Arn'
+      S3Bucket: cloudformationmanageduploadinfrast-artifactbucket-v598ox8c4z9b
+      Object: richard-resource-provider-2020-05-17T20-21-49.zip
+      Role: !GetAtt ResourceProviderProviderExecutionRole.Arn
+  Provider:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: CustomResource
+    Properties: 
+      Parameters: 
+        TypeName: "Richard::Cloud9::Environment"
+        ExecutionRoleArn: "arn:aws:iam::784907117618:role/richard-cloud9-environment-role-stac-ExecutionRole-14CFVAVJTU6CX"
+        LogRoleArn: "arn:aws:iam::784907117618:role/CloudFormationManagedUplo-LogAndMetricsDeliveryRol-1SKOPR6D2P648"
+        LogGroupName: "local-test"
+        SchemaHandlerPackage: "s3://rhb-blog/provider-types/richard-cloud9-environment.zip"
+      TemplateURL: "https://rhb-blog.s3-eu-west-1.amazonaws.com/templates/resourceprovider.yaml"
+
+# {
+#   "RequestType" : "Create",
+#   "ResponseURL" : "http://pre-signed-S3-url-for-response",
+#   "StackId" : "arn:aws:cloudformation:us-west-2:123456789012:stack/stack-name/guid",
+#   "RequestId" : "unique id for this create request",
+#   "ResourceType" : "Custom::TestResource",
+#   "LogicalResourceId" : "MyTestResource",
+#   "ResourceProperties" : {
+#       "S3Bucket": "cloudformationmanageduploadinfrast-artifactbucket-v598ox8c4z9b",
+#       "Object": "richard-resource-provider-2020-05-17T04-26-34.zip",
+#       "Role": "arn:aws:iam::784907117618:role/RPP003-LambdaExecutionRole-1PX92120Q8BIA"
+#   }
+# }
